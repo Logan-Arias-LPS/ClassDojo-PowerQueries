@@ -3,23 +3,18 @@
 	<summary>ClassDojo users</summary>
     <columns>
       <column column="USERS.STATE">a_sourcedId</column>
-	  <column column="SCHOOLSTAFF.STATUS">b_status</column>
-	  <column column="USERS.HOMEROOM">c_dateLastModified</column>
-	  <column column="SCHOOLSTAFF.STATUS">d_enabledUser</column>
-	  <column column="USERS.HOMESCHOOLID">e_orgSourcedIds</column>
-	  <column column="USERS.LOGINID">f_role</column>
-	  <column column="USERS.TEACHERLOGINID">g_username</column>
-	  <column column="USERS.ZIP">h_userIds</column>
-	  <column column="USERS.FIRST_NAME">i_givenName</column>
-	  <column column="USERS.LAST_NAME">j_familyName</column>
-	  <column column="USERS.MIDDLE_NAME">k_middleName</column>
-	  <column column="USERS.TEACHERNUMBER">l_identifier</column>
-	  <column column="USERS.EMAIL_ADDR">m_email</column>
-	  <column column="USERS.SCHOOL_PHONE">n_sms</column>
-	  <column column="USERS.HOME_PHONE">o_phone</column>
-	  <column column="USERS.CITY">p_agentSourcedIds</column>
-	  <column column="USERS.TITLE">q_grades</column>
-	  <column column="USERS.STREET">r_password</column>
+	  <column column="USERS.HOMESCHOOLID">b_orgSourcedIds</column>
+	  <column column="USERS.LOGINID">c_role</column>
+	  <column column="USERS.FIRST_NAME">d_givenName</column>
+	  <column column="USERS.LAST_NAME">e_familyName</column>
+	  <column column="USERS.EMAIL_ADDR">f_email</column>
+	  <column column="USERS.CITY">g_agentSourcedIds</column>
+	  <column column="USERS.SCHOOL_PHONE">h_guardian_sms</column>
+	  <column column="USERS.HOME_PHONE">i_guardian_phone</column>
+	  <column column="USERS.SCHOOL_PHONE">j_staff_sms</column>
+	  <column column="USERS.HOME_PHONE">k_staff_phone</column>
+	  <column column="USERS.TITLE">l_grades</column>
+	  <column column="USERS.STREET">m_primary_language</column>
     </columns>
     <sql><![CDATA[
 with yearquery as (select 
@@ -163,79 +158,40 @@ group by guardian.guardianid
 -- teachers
 select 
   'T'||users.dcid as sourcedId,
-  null as status,
-  null as dateLastModified,
-  case 
-    when BITAND(schoolstaff.status, schoolstaff.staffstatus)+0 = 1
-    then 'true'
-    else 'false'
-  end as enabledUser,
   TeacherorgSourceGroup.orgSourcedIds,
   'teacher' as role,
-  case 
-    when users.teacherloginid like '##%'
-    then users.Email_Addr
-    when users.loginid like '##%'
-    then users.Email_Addr
-    when users.teacherloginid like '~~%'
-    then users.Email_Addr
-    when users.loginid like '~~%'
-    then users.Email_Addr
-    when users.teacherloginid is not null
-    then users.teacherloginid
-    when users.loginid is not null
-    then users.loginid
-    else 'T'||users.dcid
-  end as username,
-  '{Admin Portal Username:' || NVL(teachers.loginId, ' ') || '},{Teacher Portal Username:' || NVL(teachers.teacherLoginId, ' ') || '}' AS userIds,
   users.first_name as givenName,
   users.last_name as familyName,
-  substr(users.middle_name,0,1) as middleName,
-  users.teachernumber as identifier,
   users.email_addr as email,
-  null as sms,
-  users.home_phone as phone,
   null as agentSourcedIds,
+  null as guardian_sms,
+  null as guardian_phone,
+  null as staff_sms,
+  null as staff_phone,
   null as grades,
-  null as password
+  null as primary_language
 from users
 left join (select * from TeacherorgSourceGroup) TeacherorgSourceGroup on TeacherorgSourceGroup.dcid = users.dcid
 join schoolstaff on schoolstaff.users_dcid = users.dcid
 left join teachers on teachers.users_dcid = users.dcid AND teachers.schoolId = users.homeSchoolId
 where users.homeschoolid = schoolstaff.schoolid
+and BITAND(schoolstaff.status, schoolstaff.staffstatus)+0 = 1
 
 union all
 
 -- students
 select
   'S'||students.dcid as sourcedId,
-  null as status,
-  null as dateLastModified,
-  case students.enroll_status
-    when 0 then 'true'
-    when -1 then 'true'
-    else 'false'
-  end as enabledUser,
   StudentorgSourceGroup.orgSourcedIds,
   'student' as role,
-  case 
-    when students.student_web_id like '##%'
-    then StudentEmail.email
-    when students.student_web_id like '~~%'
-    then StudentEmail.email
-    when students.student_web_id is not null
-    then students.student_web_id
-    else 'S'||students.dcid
-  end as username,
-  '{State Student Number:' || NVL(students.state_studentNumber, ' ') || '},{Student Portal Username:' || NVL(students.student_web_id, ' ') || '},{Student ID:' || students.id  || '}' as userIds,
   students.first_name as givenName,
   students.last_name as familyName,
-  substr(students.middle_name,0,1) as middleName,
-  to_char(students.student_number) as identifier,
   StudentEmail.email as email,
-  null as sms,
-  students.home_phone as phone,
   studenttoguardianGroup.agentSourcedIds,
+  null as guardian_sms,
+  null as guardian_phone,
+  null as staff_sms,
+  null as staff_phone,
   case 
     when students.grade_level <= -3 then 'IT'
     when students.grade_level between -2 and -1 then 'PK'
@@ -244,7 +200,7 @@ select
     when students.grade_level > 13 then 'PS'
     else 'Other'
   end as grades,
-  null as password
+  null as primary_language
 from students
 join schools on students.schoolid = schools.school_number
 -- School join graph
@@ -253,6 +209,7 @@ join (select * from StudentorgSourceGroup) StudentorgSourceGroup on StudentorgSo
 left join (select * from StudentEmail) StudentEmail on StudentEmail.dcid = students.dcid
 -- multi-guardian join graph
 join (select * from studenttoguardianGroup) studenttoguardianGroup on studenttoguardianGroup.dcid = students.dcid
+where students.enroll_status in (0,-1)
 
 
 union all
@@ -260,32 +217,18 @@ union all
 -- guardians
 select 
   'G'||guardian.guardianid as sourcedId,
-  null as status,
-  null as dateLastModified,
-  case PCAS_ACCOUNT.ISENABLED
-    when 1 then 'true'
-    else 'false'
-  end as enabledUser,
   guardiantostudentSchool.orgSourcedIds,
   'guardian' as role,
-  case 
-    when pcas_account.username like '##%'
-    then pcas_emailcontact.emailaddress
-    when pcas_account.username like '~~%'
-    then pcas_emailcontact.emailaddress
-    else pcas_account.username
-  end as username,
-  '{Guardian Email address:' || NVL(pcas_emailcontact.emailaddress, ' ') || '},{Guardian Portal Username:' || NVL(pcas_account.username, ' ') || '}' as userIds,
   person.firstname as givenName,
   person.lastname as familyName,
-  person.middlename as middleName,
-  cast(person.ID as varchar2(10)) as identifier,
   pcas_emailcontact.emailaddress as email,
-  null as sms,
-  null as phone,
   guardiantostudentGroup.agentSourcedIds,
+  null as guardian_sms,
+  null as guardian_phone,
+  null as staff_sms,
+  null as staff_phone,
   null as grades,
-  null as password
+  null as primary_language
 from guardian
 join (select * from guardiantostudentSchool) guardiantostudentSchool on guardiantostudentSchool.guardianid = guardian.guardianid
 join (select * from guardiantostudentGroup) guardiantostudentGroup on guardiantostudentGroup.guardianid = guardian.guardianid
@@ -293,6 +236,7 @@ join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
 join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
 join guardianpersonassoc on guardian.guardianid = guardianpersonassoc.guardianid
 join person on person.id = guardianpersonassoc.personid
+where PCAS_ACCOUNT.ISENABLED = 1
 
     ]]></sql>
   </query>
