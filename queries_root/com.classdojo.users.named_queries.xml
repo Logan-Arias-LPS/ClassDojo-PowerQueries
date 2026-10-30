@@ -1,0 +1,300 @@
+<queries>
+  <query name="com.classdojo.users" coreTable="users" flattened="true">
+	<summary>ClassDojo users</summary>
+    <columns>
+      <column column="USERS.STATE">a_sourcedId</column>
+	  <column column="SCHOOLSTAFF.STATUS">b_status</column>
+	  <column column="USERS.HOMEROOM">c_dateLastModified</column>
+	  <column column="SCHOOLSTAFF.STATUS">d_enabledUser</column>
+	  <column column="USERS.HOMESCHOOLID">e_orgSourcedIds</column>
+	  <column column="USERS.LOGINID">f_role</column>
+	  <column column="USERS.TEACHERLOGINID">g_username</column>
+	  <column column="USERS.ZIP">h_userIds</column>
+	  <column column="USERS.FIRST_NAME">i_givenName</column>
+	  <column column="USERS.LAST_NAME">j_familyName</column>
+	  <column column="USERS.MIDDLE_NAME">k_middleName</column>
+	  <column column="USERS.TEACHERNUMBER">l_identifier</column>
+	  <column column="USERS.EMAIL_ADDR">m_email</column>
+	  <column column="USERS.SCHOOL_PHONE">n_sms</column>
+	  <column column="USERS.HOME_PHONE">o_phone</column>
+	  <column column="USERS.CITY">p_agentSourcedIds</column>
+	  <column column="USERS.TITLE">q_grades</column>
+	  <column column="USERS.STREET">r_password</column>
+    </columns>
+    <sql><![CDATA[
+with yearquery as (select 
+  id, abbreviation
+from terms
+where portion = 1
+  AND terms.lastday > sysdate
+  AND sysdate > terms.firstday-30
+  AND schoolid=0
+),
+TeacherorgSource as (select 
+  users.dcid as dcid,
+  case cast(schoolstaff.SchoolID as varchar2(10))
+    when '0'
+    then cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10))
+    else cast(schoolstaff.SchoolID as varchar2(10))
+  end as SchoolID
+from users
+join schoolstaff on schoolstaff.users_dcid = users.dcid and schoolstaff.status = 1 and schoolstaff.staffstatus = 1 and schoolstaff.schoolid != users.homeschoolid
+),
+TeacherorgSourceh as (select 
+  users.dcid as dcid,
+  case cast(schoolstaff.SchoolID as varchar2(10))
+    when '0'
+    then cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10))
+    else cast(schoolstaff.SchoolID as varchar2(10))
+  end as SchoolID
+from users
+join schoolstaff on schoolstaff.users_dcid = users.dcid and schoolstaff.schoolid = users.homeschoolid
+),
+TeacherorgSourceGroup as (select 
+  users.dcid,
+  case 
+     when (LISTAGG(TeacherorgSource.SchoolID, ',') WITHIN GROUP (ORDER BY TeacherorgSource.SchoolID)) is null 
+     then cast(TeacherorgSourceh.SchoolID as varchar2(10))
+     else TeacherorgSourceh.SchoolID||','||(LISTAGG(TeacherorgSource.SchoolID, ',') WITHIN GROUP (ORDER BY TeacherorgSource.SchoolID))
+  end as orgSourcedIds
+from users
+join (select * from TeacherorgSourceh) TeacherorgSourceh on TeacherorgSourceh.dcid = users.dcid
+left join (select * from TeacherorgSource) TeacherorgSource on TeacherorgSource.dcid = users.dcid
+join schoolstaff on schoolstaff.users_dcid = users.dcid and schoolstaff.schoolid = users.homeschoolid
+
+group by users.dcid, TeacherorgSourceh.SchoolID
+),
+StudentorgSource as (select distinct
+  students.dcid,
+  cc.schoolid
+from students
+join cc on students.id = cc.studentid
+join yearquery on 1=1
+join sections on cc.sectionid = sections.id
+join teachers t on sections.teacher=t.id and t.ptaccess = 1 and t.status = 1 and t.StaffStatus = 1
+where students.enroll_status = 0
+and cc.schoolid != students.schoolid
+and (cc.termid between yearquery.id and yearquery.id+99)
+and cc.dateleft > cc.dateenrolled
+),
+StudentorgSourceh as (select
+  students.dcid,
+  students.schoolid
+from students
+),
+StudentorgSourceGroup as (select 
+  students.dcid,
+  case 
+     when (LISTAGG(StudentorgSource.SchoolID, ',') WITHIN GROUP (ORDER BY StudentorgSource.SchoolID)) is null 
+     then cast(StudentorgSourceh.SchoolID as varchar2(10))
+     else StudentorgSourceh.SchoolID||','||(LISTAGG(StudentorgSource.SchoolID, ',') WITHIN GROUP (ORDER BY StudentorgSource.SchoolID))
+  end as orgSourcedIds
+from students
+join (select * from StudentorgSourceh) StudentorgSourceh on StudentorgSourceh.dcid = students.dcid
+left join (select * from StudentorgSource) StudentorgSource on StudentorgSource.dcid = students.dcid
+
+group by students.dcid, StudentorgSourceh.SchoolID
+),
+StudentEmail as (select
+  psc.email as email,
+  stu.dcid as dcid
+from PSM_STudentcontact psc
+join psm_studentcontacttype psct on psc.studentcontacttypeid = psct.id and psct.name = 'Self'
+join sync_studentmap ssm on psc.studentid = ssm.studentid
+join students stu on ssm.studentsdcid = stu.dcid
+),
+studenttoguardian as (select
+  students.dcid,
+  guardian.guardianid
+from students
+join studentcontactassoc on students.dcid = studentcontactassoc.studentdcid
+join guardianpersonassoc on studentcontactassoc.personid = guardianpersonassoc.personID
+join guardian on guardianpersonassoc.guardianid = guardian.guardianid
+join GuardianStudent on students.dcid = GuardianStudent.StudentsDCID and guardian.guardianid=GuardianStudent.GuardianID
+join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
+),
+studenttoguardianGroup as (select
+  students.dcid,
+  -- listagg() creates comma-separated aggregate list for all linked guardian contacts, then replace() removes those that don't have a PCAS account
+  case 
+    when (replace(listagg('G'||studenttoguardian.guardianid,',') within group (ORDER BY students.dcid),'G,','')) = 'G' 
+    then null 
+    else (replace(listagg('G'||studenttoguardian.guardianid,',') within group (ORDER BY students.dcid),'G,',''))
+  end as agentSourcedIds
+from students
+left join (select * from studenttoguardian) studenttoguardian on studenttoguardian.dcid = students.dcid
+Group by students.dcid
+),
+guardiantostudents as (select
+  guardian.guardianid,
+  studentcontactassoc.studentdcid
+from guardian
+join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
+left join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
+left join guardianpersonassoc on guardian.guardianid = guardianpersonassoc.guardianid
+left join studentcontactassoc on guardianpersonassoc.personID = studentcontactassoc.personID 
+left join students on students.DCID = studentcontactassoc.studentdcid
+join GuardianStudent on students.dcid = GuardianStudent.StudentsDCID and guardian.guardianid=GuardianStudent.GuardianID
+where guardianpersonassoc.PersonID is not null
+),
+guardiantostudentGroup as (select 
+  guardian.guardianid,
+  case 
+    when (replace(listagg('S'||guardiantostudents.studentdcid,',') within group (ORDER BY guardian.guardianid),'S,','')) = 'S' 
+    then null 
+    else (replace(listagg('S'||guardiantostudents.studentdcid,',') within group (ORDER BY guardian.guardianid),'S,',''))
+  end as agentSourcedIds
+from guardian
+left join (select * from guardiantostudents) guardiantostudents on guardiantostudents.guardianid = guardian.guardianid
+group by guardian.guardianid
+),
+guardiantostudentSchool as (select 
+  guardian.guardianid,
+  case 
+    when (listagg(students.schoolid,',') within group (ORDER BY guardian.guardianid)) is null
+    then cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10))
+    else (listagg(students.schoolid,',') within group (ORDER BY guardian.guardianid))
+  end as orgSourcedIds
+from guardian
+join (select * from guardiantostudents) guardiantostudents on guardiantostudents.guardianid = guardian.guardianid
+join students on students.dcid = guardiantostudents.studentdcid
+group by guardian.guardianid
+)
+-- teachers
+select 
+  'T'||users.dcid as sourcedId,
+  null as status,
+  null as dateLastModified,
+  case 
+    when BITAND(schoolstaff.status, schoolstaff.staffstatus)+0 = 1
+    then 'true'
+    else 'false'
+  end as enabledUser,
+  TeacherorgSourceGroup.orgSourcedIds,
+  'teacher' as role,
+  case 
+    when users.teacherloginid like '##%'
+    then users.Email_Addr
+    when users.loginid like '##%'
+    then users.Email_Addr
+    when users.teacherloginid like '~~%'
+    then users.Email_Addr
+    when users.loginid like '~~%'
+    then users.Email_Addr
+    when users.teacherloginid is not null
+    then users.teacherloginid
+    when users.loginid is not null
+    then users.loginid
+    else 'T'||users.dcid
+  end as username,
+  '{Admin Portal Username:' || NVL(teachers.loginId, ' ') || '},{Teacher Portal Username:' || NVL(teachers.teacherLoginId, ' ') || '}' AS userIds,
+  users.first_name as givenName,
+  users.last_name as familyName,
+  substr(users.middle_name,0,1) as middleName,
+  users.teachernumber as identifier,
+  users.email_addr as email,
+  null as sms,
+  users.home_phone as phone,
+  null as agentSourcedIds,
+  null as grades,
+  null as password
+from users
+left join (select * from TeacherorgSourceGroup) TeacherorgSourceGroup on TeacherorgSourceGroup.dcid = users.dcid
+join schoolstaff on schoolstaff.users_dcid = users.dcid
+left join teachers on teachers.users_dcid = users.dcid AND teachers.schoolId = users.homeSchoolId
+where users.homeschoolid = schoolstaff.schoolid
+
+union all
+
+-- students
+select
+  'S'||students.dcid as sourcedId,
+  null as status,
+  null as dateLastModified,
+  case students.enroll_status
+    when 0 then 'true'
+    when -1 then 'true'
+    else 'false'
+  end as enabledUser,
+  StudentorgSourceGroup.orgSourcedIds,
+  'student' as role,
+  case 
+    when students.student_web_id like '##%'
+    then StudentEmail.email
+    when students.student_web_id like '~~%'
+    then StudentEmail.email
+    when students.student_web_id is not null
+    then students.student_web_id
+    else 'S'||students.dcid
+  end as username,
+  '{State Student Number:' || NVL(students.state_studentNumber, ' ') || '},{Student Portal Username:' || NVL(students.student_web_id, ' ') || '},{Student ID:' || students.id  || '}' as userIds,
+  students.first_name as givenName,
+  students.last_name as familyName,
+  substr(students.middle_name,0,1) as middleName,
+  to_char(students.student_number) as identifier,
+  StudentEmail.email as email,
+  null as sms,
+  students.home_phone as phone,
+  studenttoguardianGroup.agentSourcedIds,
+  case 
+    when students.grade_level <= -3 then 'IT'
+    when students.grade_level between -2 and -1 then 'PK'
+    when students.grade_level = 0 then 'KG'
+    when students.grade_level between 1 and 13 then trim(to_char(students.grade_level,'00'))
+    when students.grade_level > 13 then 'PS'
+    else 'Other'
+  end as grades,
+  null as password
+from students
+join schools on students.schoolid = schools.school_number
+-- School join graph
+join (select * from StudentorgSourceGroup) StudentorgSourceGroup on StudentorgSourceGroup.dcid = students.dcid
+-- student email join graph
+left join (select * from StudentEmail) StudentEmail on StudentEmail.dcid = students.dcid
+-- multi-guardian join graph
+join (select * from studenttoguardianGroup) studenttoguardianGroup on studenttoguardianGroup.dcid = students.dcid
+
+
+union all
+
+-- guardians
+select 
+  'G'||guardian.guardianid as sourcedId,
+  null as status,
+  null as dateLastModified,
+  case PCAS_ACCOUNT.ISENABLED
+    when 1 then 'true'
+    else 'false'
+  end as enabledUser,
+  guardiantostudentSchool.orgSourcedIds,
+  'guardian' as role,
+  case 
+    when pcas_account.username like '##%'
+    then pcas_emailcontact.emailaddress
+    when pcas_account.username like '~~%'
+    then pcas_emailcontact.emailaddress
+    else pcas_account.username
+  end as username,
+  '{Guardian Email address:' || NVL(pcas_emailcontact.emailaddress, ' ') || '},{Guardian Portal Username:' || NVL(pcas_account.username, ' ') || '}' as userIds,
+  person.firstname as givenName,
+  person.lastname as familyName,
+  person.middlename as middleName,
+  cast(person.ID as varchar2(10)) as identifier,
+  pcas_emailcontact.emailaddress as email,
+  null as sms,
+  null as phone,
+  guardiantostudentGroup.agentSourcedIds,
+  null as grades,
+  null as password
+from guardian
+join (select * from guardiantostudentSchool) guardiantostudentSchool on guardiantostudentSchool.guardianid = guardian.guardianid
+join (select * from guardiantostudentGroup) guardiantostudentGroup on guardiantostudentGroup.guardianid = guardian.guardianid
+join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
+join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
+join guardianpersonassoc on guardian.guardianid = guardianpersonassoc.guardianid
+join person on person.id = guardianpersonassoc.personid
+
+    ]]></sql>
+  </query>
+  <!-- Define more queries here -->
+</queries>
