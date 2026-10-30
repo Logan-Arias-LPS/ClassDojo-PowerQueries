@@ -155,6 +155,28 @@ join (select * from guardiantostudents) guardiantostudents on guardiantostudents
 join students on students.dcid = guardiantostudents.studentdcid
 group by guardian.guardianid
 ),
+PSSIS_Person_PhoneLand_Group as (select 
+PSSIS_Person_Phone.PersonID,
+PSSIS_Person_Phone.PhoneNumber,
+PSSIS_Person_Phone.PhoneNumberExt,
+PSSIS_Person_Phone.PhoneType,
+row_number () over (
+           partition by PersonID
+           order by IsPreferred DESC,PhoneNumberPriorityOrder ASC
+         ) rn
+from PSSIS_Person_Phone
+where ISSMS = 0
+and PhoneNumberExt IS NULL
+and PhoneType != 'Mobile'
+),
+PSSIS_Person_PhoneLand as (select 
+PSSIS_Person_PhoneLand_Group.PersonID,
+PSSIS_Person_PhoneLand_Group.PhoneNumber,
+PSSIS_Person_PhoneLand_Group.PhoneNumberExt,
+PSSIS_Person_PhoneLand_Group.PhoneType
+from  PSSIS_Person_PhoneLand_Group
+where PSSIS_Person_PhoneLand_Group.rn = 1
+),
 PSSIS_Person_PhoneSMS_Group as (select 
 PSSIS_Person_Phone.PersonID,
 PSSIS_Person_Phone.PhoneNumber,
@@ -249,7 +271,7 @@ select
   -- guardiantostudentGroup.agentSourcedIds,
   null as agentSourcedIds,
   PSSIS_Person_PhoneSMS.PhoneNumber as guardian_sms,
-  null as guardian_phone,
+  PSSIS_Person_PhoneLand.PhoneNumber as guardian_phone,
   null as staff_sms,
   null as staff_phone,
   null as grades,
@@ -261,6 +283,7 @@ join studentcontactassoc on person.id = studentcontactassoc.personID
 join StudentContactDetail on studentcontactassoc.StudentContactAssocID = StudentContactDetail.StudentContactAssocID
 join students on studentcontactassoc.studentdcid = students.dcid
 LEFT JOIN PSSIS_Person_PhoneSMS ON PSSIS_Person_PhoneSMS.PersonID = person.id
+LEFT JOIN PSSIS_Person_PhoneLand ON PSSIS_Person_PhoneLand.PersonID = person.id
 where person.IsActive = 1
 
     ]]></sql>
