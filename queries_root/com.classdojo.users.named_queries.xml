@@ -214,29 +214,31 @@ where students.enroll_status in (0,-1)
 
 union all
 
--- guardians
+-- contacts
 select 
-  'G'||guardian.guardianid as sourcedId,
-  guardiantostudentSchool.orgSourcedIds,
+  'C'||person.id as sourcedId,
+  -- contacttostudentSchool.orgSourcedIds,
+  null as orgSourcedIds,
   'guardian' as role,
   person.firstname as givenName,
   person.lastname as familyName,
-  pcas_emailcontact.emailaddress as email,
-  guardiantostudentGroup.agentSourcedIds,
+  -- pcas_emailcontact.emailaddress as email,
+  null as email,
+  -- guardiantostudentGroup.agentSourcedIds,
+  null as agentSourcedIds,
   null as guardian_sms,
   null as guardian_phone,
   null as staff_sms,
   null as staff_phone,
   null as grades,
   null as primary_language
-from guardian
-join (select * from guardiantostudentSchool) guardiantostudentSchool on guardiantostudentSchool.guardianid = guardian.guardianid
-join (select * from guardiantostudentGroup) guardiantostudentGroup on guardiantostudentGroup.guardianid = guardian.guardianid
-join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
-join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
-join guardianpersonassoc on guardian.guardianid = guardianpersonassoc.guardianid
-join person on person.id = guardianpersonassoc.personid
-where PCAS_ACCOUNT.ISENABLED = 1
+from person
+-- join (select * from contacttostudentSchool) contacttostudentSchool on contacttostudentSchool.personid = person.id
+-- join (select * from contacttostudentGroup) guardiantostudentGroup on guardiantostudentGroup.personid = person.id
+join studentcontactassoc on person.id = studentcontactassoc.personID
+join StudentContactDetail on studentcontactassoc.StudentContactAssocID = StudentContactDetail.StudentContactAssocID
+join students on studentcontactassoc.studentdcid = students.dcid
+where person.IsActive = 1
 
     ]]></sql>
   </query>
