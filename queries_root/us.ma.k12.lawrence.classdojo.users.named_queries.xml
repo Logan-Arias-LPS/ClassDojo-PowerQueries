@@ -172,7 +172,6 @@ row_number () over (
 from PSSIS_Person_Phone
 where ISSMS = 0
 and PhoneNumberExt IS NULL
-and PhoneType != 'Mobile'
 ),
 PSSIS_Person_PhoneLand as (select 
 PSSIS_Person_PhoneLand_Group.PersonID,
@@ -194,7 +193,6 @@ row_number () over (
 from PSSIS_Person_Phone
 where ISSMS = 1
 and PhoneNumberExt IS NULL
-and PhoneType = 'Mobile'
 ),
 PSSIS_Person_PhoneSMS as (select 
 PSSIS_Person_PhoneSMS_Group.PersonID,
