@@ -151,9 +151,9 @@ group by person.id
 contacttostudentSchool as (select 
  person.id,
   case 
-    when (listagg(students.schoolid,',') within group (ORDER BY person.id)) is null
+    when (listagg(DISTINCT students.schoolid,',') within group (ORDER BY person.id)) is null
     then cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10))
-    else (listagg(students.schoolid,',') within group (ORDER BY person.id))
+    else (listagg( DISTINCT students.schoolid,',') within group (ORDER BY person.id))
   end as orgSourcedIds
 from person
 join (select * from contacttostudents) contacttostudents on contacttostudents.id = person.id
