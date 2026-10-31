@@ -203,6 +203,23 @@ PSSIS_Person_PhoneSMS_Group.PhoneNumberExt,
 PSSIS_Person_PhoneSMS_Group.PhoneType
 from  PSSIS_Person_PhoneSMS_Group
 where PSSIS_Person_PhoneSMS_Group.rn = 1
+),
+PSSIS_Person_Email_Group as (select 
+PSSIS_Person_Email.PersonID,
+PSSIS_Person_Email.EmailAddress,
+PSSIS_Person_Email.EmailType,
+row_number () over (
+           partition by PersonID
+           order by IsPrimaryEmailAddress DESC,EmailAddressPriorityOrder ASC
+         ) rn
+from PSSIS_Person_Email
+),
+PSSIS_Person_Email1 as (select 
+PSSIS_Person_Email_Group.PersonID,
+PSSIS_Person_Email_Group.EmailAddress,
+PSSIS_Person_Email_Group.EmailType
+from  PSSIS_Person_Email_Group
+where PSSIS_Person_Email_Group.rn = 1
 )
 -- teachers
 select 
@@ -271,7 +288,10 @@ select
   person.firstname as givenName,
   person.lastname as familyName,
   -- pcas_emailcontact.emailaddress as email,
-  null as email,
+  case
+    when pcas_emailcontact.pcas_accountid Is Not Null then pcas_emailcontact.emailaddress
+    else PSSIS_Person_Email1.EmailAddress
+  end as email,
   contacttostudentGroup.agentSourcedIds,
   PSSIS_Person_PhoneSMS.PhoneNumber as guardian_sms,
   PSSIS_Person_PhoneLand.PhoneNumber as guardian_phone,
@@ -284,6 +304,11 @@ join (select * from contacttostudentSchool) contacttostudentSchool on contacttos
 join (select * from contacttostudentGroup) contacttostudentGroup on contacttostudentGroup.id = person.id
 LEFT JOIN PSSIS_Person_PhoneSMS ON PSSIS_Person_PhoneSMS.PersonID = person.id
 LEFT JOIN PSSIS_Person_PhoneLand ON PSSIS_Person_PhoneLand.PersonID = person.id
+LEFT JOIN PSSIS_Person_Email1 ON PSSIS_Person_Email1.PersonID = person.id
+left join GuardianPersonAssoc on person.id = GuardianPersonAssoc.PersonID
+left join guardian on guardianpersonassoc.guardianid = guardian.guardianid
+left join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
+left join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
 where person.IsActive = 1
 
     ]]></sql>
