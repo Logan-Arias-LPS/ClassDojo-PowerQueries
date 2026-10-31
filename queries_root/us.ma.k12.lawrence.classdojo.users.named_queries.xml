@@ -1,5 +1,5 @@
 <queries>
-  <query name="com.classdojo.users" coreTable="users" flattened="true">
+  <query name="us.ma.k12.lawrence.classdojo.users" coreTable="users" flattened="true">
 	<summary>ClassDojo users</summary>
     <columns>
       <column column="USERS.STATE">a_sourcedId</column>
