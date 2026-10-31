@@ -1,5 +1,5 @@
 <queries>
-  <query name="us.ma.k12.lawrence.classdoj.orgs" coreTable="schools" flattened="true">
+  <query name="us.ma.k12.lawrence.classdojo.orgs" coreTable="schools" flattened="true">
 	<summary>ClassDojo orgs</summary>
     <columns>
       <column column="SCHOOLS.SCHOOL_NUMBER">a_sourcedId</column>
