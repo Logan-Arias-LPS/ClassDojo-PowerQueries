@@ -123,40 +123,42 @@ from students
 left join (select * from studenttocontact ) studenttocontact on studenttocontact.dcid = students.dcid
 Group by students.dcid
 ),
-guardiantostudents as (select
-  guardian.guardianid,
+contacttostudents as (select
+  person.id,
   studentcontactassoc.studentdcid
-from guardian
-join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
-left join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
-left join guardianpersonassoc on guardian.guardianid = guardianpersonassoc.guardianid
-left join studentcontactassoc on guardianpersonassoc.personID = studentcontactassoc.personID 
-left join students on students.DCID = studentcontactassoc.studentdcid
-join GuardianStudent on students.dcid = GuardianStudent.StudentsDCID and guardian.guardianid=GuardianStudent.GuardianID
-where guardianpersonassoc.PersonID is not null
+from person
+join studentcontactassoc on person.id = studentcontactassoc.personID
+join StudentContactDetail on studentcontactassoc.StudentContactAssocID = StudentContactDetail.StudentContactAssocID
+join students on studentcontactassoc.studentdcid = students.dcid
+join PSSIS_STU_CONTACT_ACT on person.id = PSSIS_STU_CONTACT_ACT.CONTACTPERSONID and studentcontactassoc.STUDENTCONTACTASSOCID = PSSIS_STU_CONTACT_ACT.STUDENTCONTACTASSOCID and students.dcid = PSSIS_STU_CONTACT_ACT.STUDENTDCID
+left join GuardianPersonAssoc on person.id = GuardianPersonAssoc.PersonID
+left join guardian on guardianpersonassoc.guardianid = guardian.guardianid
+left join GuardianStudent on students.dcid = GuardianStudent.StudentsDCID and Guardian.guardianid=GuardianStudent.GuardianID
+where (PSSIS_STU_CONTACT_ACT.ISCUSTODIAL = 1 or PSSIS_STU_CONTACT_ACT.LIVESWITHFLG = 1 OR GuardianStudent.GuardianID is not null)
+and students.enroll_status in (0,-1)
 ),
-guardiantostudentGroup as (select 
-  guardian.guardianid,
+contacttostudentGroup as (select 
+  person.id,
   case 
-    when (replace(listagg('S'||guardiantostudents.studentdcid,',') within group (ORDER BY guardian.guardianid),'S,','')) = 'S' 
+    when (replace(listagg('S'||contacttostudents.studentdcid,',') within group (ORDER BY person.id),'S,','')) = 'S' 
     then null 
-    else (replace(listagg('S'||guardiantostudents.studentdcid,',') within group (ORDER BY guardian.guardianid),'S,',''))
+    else (replace(listagg('S'||contacttostudents.studentdcid,',') within group (ORDER BY person.id),'S,',''))
   end as agentSourcedIds
-from guardian
-left join (select * from guardiantostudents) guardiantostudents on guardiantostudents.guardianid = guardian.guardianid
-group by guardian.guardianid
+from person
+left join (select * from contacttostudents) contacttostudents on contacttostudents.id = person.id
+group by person.id
 ),
-guardiantostudentSchool as (select 
-  guardian.guardianid,
+contacttostudentSchool as (select 
+ person.id,
   case 
-    when (listagg(students.schoolid,',') within group (ORDER BY guardian.guardianid)) is null
+    when (listagg(students.schoolid,',') within group (ORDER BY person.id)) is null
     then cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10))
-    else (listagg(students.schoolid,',') within group (ORDER BY guardian.guardianid))
+    else (listagg(students.schoolid,',') within group (ORDER BY person.id))
   end as orgSourcedIds
-from guardian
-join (select * from guardiantostudents) guardiantostudents on guardiantostudents.guardianid = guardian.guardianid
-join students on students.dcid = guardiantostudents.studentdcid
-group by guardian.guardianid
+from person
+join (select * from contacttostudents) contacttostudents on contacttostudents.id = person.id
+join students on students.dcid = contacttostudents.studentdcid
+group by person.id
 ),
 PSSIS_Person_PhoneLand_Group as (select 
 PSSIS_Person_Phone.PersonID,
@@ -264,15 +266,13 @@ union all
 -- Contacts
 select 
   'C'||person.id as sourcedId,
-  -- contacttostudentSchool.orgSourcedIds,
-  null as orgSourcedIds,
+  contacttostudentSchool.orgSourcedIds,
   'guardian' as role,
   person.firstname as givenName,
   person.lastname as familyName,
   -- pcas_emailcontact.emailaddress as email,
   null as email,
-  -- guardiantostudentGroup.agentSourcedIds,
-  null as agentSourcedIds,
+  contacttostudentGroup.agentSourcedIds,
   PSSIS_Person_PhoneSMS.PhoneNumber as guardian_sms,
   PSSIS_Person_PhoneLand.PhoneNumber as guardian_phone,
   null as staff_sms,
@@ -280,11 +280,8 @@ select
   null as grades,
   null as primary_language
 from person
--- join (select * from contacttostudentSchool) contacttostudentSchool on contacttostudentSchool.personid = person.id
--- join (select * from contacttostudentGroup) guardiantostudentGroup on guardiantostudentGroup.personid = person.id
-join studentcontactassoc on person.id = studentcontactassoc.personID
-join StudentContactDetail on studentcontactassoc.StudentContactAssocID = StudentContactDetail.StudentContactAssocID
-join students on studentcontactassoc.studentdcid = students.dcid
+join (select * from contacttostudentSchool) contacttostudentSchool on contacttostudentSchool.id = person.id
+join (select * from contacttostudentGroup) contacttostudentGroup on contacttostudentGroup.id = person.id
 LEFT JOIN PSSIS_Person_PhoneSMS ON PSSIS_Person_PhoneSMS.PersonID = person.id
 LEFT JOIN PSSIS_Person_PhoneLand ON PSSIS_Person_PhoneLand.PersonID = person.id
 where person.IsActive = 1
