@@ -3,15 +3,11 @@
 	<summary>ClassDojo enrollments</summary>
     <columns>
       <column column="CC.STUDENTSECTENRL_GUID">a_sourcedId</column>
-	  <column column="CC.SECTION_NUMBER">b_status</column>
-	  <column column="CC.LASTGRADEUPDATE">c_dateLastModified</column>
-	  <column column="CC.SECTIONID">d_classSourcedId</column>
-	  <column column="CC.ID">e_schoolSourcedId</column>
-	  <column column="CC.COURSE_NUMBER">f_userSourcedId</column>
-	  <column column="CC.EXPRESSION">g_role</column>
-	  <column column="CC.AB_COURSE_CMP_FUN_FLG">h_primary</column>
-	  <column column="CC.DATEENROLLED">i_beginDate</column>
-	  <column column="CC.DATELEFT">k_endDate</column>
+	  <column column="CC.COURSE_NUMBER">b_userSourcedId</column>
+	  <column column="CC.SECTIONID">c_classSourcedId</column>
+	  <column column="CC.ID">d_schoolSourcedId</column>
+	  <column column="CC.AB_COURSE_CMP_FUN_FLG">e_primary</column>
+	  <column column="CC.EXPRESSION">f_role</column>
     </columns>
     <sql><![CDATA[
 with yearquery as (select 
@@ -25,11 +21,19 @@ where portion = 1
 
 select 
   'ST'||sectionteacher.id||'-T'||schoolstaff.users_dcid as sourcedId,
-  null as status,
-  null as dateLastModified,
+  'T'||schoolstaff.users_dcid as userSourcedId,
   sectionteacher.sectionid as classSourcedId,
   sections.schoolid as schoolSourcedId,
-  'T'||schoolstaff.users_dcid as userSourcedId,
+  case roledef.name
+    when 'Lead Teacher' then 'true'
+    when 'Co-teacher' then null
+    when 'DESE Co-teacher' then null
+    when 'ESL/SPED Teacher' then null
+    when 'Teacher''s Aide' then null
+    when 'Principal' then null
+    when 'School Administrator' then null
+    else null
+  end as primary,
   case roledef.name
     when 'Lead Teacher' then 'teacher'
     when 'Co-teacher' then 'teacher'
@@ -39,19 +43,7 @@ select
     when 'Principal' then 'administrator'
     when 'School Administrator' then 'administrator'
     else 'teacher'
-  end as role,
-  case roledef.name
-    when 'Lead Teacher' then 'true'
-    when 'Co-teacher' then 'false'
-    when 'DESE Co-teacher' then 'false'
-    when 'ESL/SPED Teacher' then 'false'
-    when 'Teacher''s Aide' then 'false'
-    when 'Principal' then 'false'
-    when 'School Administrator' then 'false'
-    else 'false'
-  end as primary,
-  to_char(sectionteacher.start_date,'yyyy-mm-dd') as beginDate,
-  to_char(sectionteacher.end_date,'yyyy-mm-dd') as endDate
+  end as role
   
   
 from sectionteacher
@@ -60,7 +52,7 @@ join schoolstaff on schoolstaff.id = sectionteacher.teacherid and schoolstaff.Sc
 join schools on schoolstaff.SchoolID = schools.School_Number
 join users on schoolstaff.users_dcid = users.dcid
 join roledef on sectionteacher.roleid = roledef.id
-join courses on sections.course_number = courses.course_number
+and (sysdate between sectionteacher.start_date-21 and sectionteacher.end_date+21)
 left join yearquery on 1=1
 join (SELECT 
     sectionid,
@@ -82,25 +74,21 @@ union all
 
 select
  'S'||cc.dcid as sourcedId,
- null as status,
- null as dateLastModified,
+ 'S'||students.dcid as userSourcedId,
  cc.sectionid as classSourcedId,
  cc.schoolid as schoolSourcedId,
- 'S'||students.dcid as userSourcedId,
- 'student' as role,
- null as primary,
- to_char(cc.dateenrolled,'yyyy-mm-dd') as beginDate,
- to_char(cc.dateleft-1,'yyyy-mm-dd') as endDate
+ null as primary, 
+ 'student' as role
 from cc
 join students on cc.studentid = students.id
 join schools on cc.schoolid = schools.school_number
 left join yearquery on 1=1
-join courses on cc.course_number = courses.course_number
 join sections on cc.sectionid = sections.id
 join teachers t on sections.teacher=t.id and t.ptaccess = 1 and t.status = 1 and t.StaffStatus = 1
-where students.enroll_status = 0
+where students.enroll_status in (0,-1)
 and (cc.termid between yearquery.id and yearquery.id+99)
 and cc.dateleft > cc.dateenrolled
+and (sysdate between cc.dateenrolled-21 and cc.dateleft+21)
     ]]></sql>
   </query>
   <!-- Define more queries here -->
