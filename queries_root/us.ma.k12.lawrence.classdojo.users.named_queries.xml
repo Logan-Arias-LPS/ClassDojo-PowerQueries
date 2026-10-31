@@ -218,6 +218,23 @@ PSSIS_Person_Email_Group.EmailAddress,
 PSSIS_Person_Email_Group.EmailType
 from  PSSIS_Person_Email_Group
 where PSSIS_Person_Email_Group.rn = 1
+),
+PersonLanguageAssoc_Group as (select
+  person.id,
+  Codeset.Code,
+  row_number () over (
+           partition by person.id
+           order by PersonLanguageAssoc.LANGUAGEPRIORITYORDER ASC
+         ) rn
+from person
+join PersonLanguageAssoc on person.id = PersonLanguageAssoc.PERSONID
+join Codeset on PersonLanguageAssoc.LANGUAGECODESETID = Codeset.CODESETID
+),
+PersonLanguageAssoc1 as (select 
+PersonLanguageAssoc_Group.ID,
+PersonLanguageAssoc_Group.code
+from  PersonLanguageAssoc_Group
+where PersonLanguageAssoc_Group.rn = 1
 )
 -- teachers
 select 
@@ -296,13 +313,14 @@ select
   null as staff_sms,
   null as staff_phone,
   null as grades,
-  null as primary_language
+  PersonLanguageAssoc1.Code as primary_language
 from person
 join (select * from contacttostudentSchool) contacttostudentSchool on contacttostudentSchool.id = person.id
 join (select * from contacttostudentGroup) contacttostudentGroup on contacttostudentGroup.id = person.id
 LEFT JOIN PSSIS_Person_PhoneSMS ON PSSIS_Person_PhoneSMS.PersonID = person.id
 LEFT JOIN PSSIS_Person_PhoneLand ON PSSIS_Person_PhoneLand.PersonID = person.id
 LEFT JOIN PSSIS_Person_Email1 ON PSSIS_Person_Email1.PersonID = person.id
+LEFT JOIN PersonLanguageAssoc1 ON PersonLanguageAssoc1.ID = person.id
 left join GuardianPersonAssoc on person.id = GuardianPersonAssoc.PersonID
 left join guardian on guardianpersonassoc.guardianid = guardian.guardianid
 left join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
