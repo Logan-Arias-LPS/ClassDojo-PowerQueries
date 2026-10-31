@@ -1,0 +1,46 @@
+<queries>
+  <query name="us.ma.k12.lawrence.classdoj.orgs" coreTable="schools" flattened="true">
+	<summary>ClassDojo orgs</summary>
+    <columns>
+      <column column="SCHOOLS.SCHOOL_NUMBER">a_sourcedId</column>
+	  <column column="SCHOOLS.ABBREVIATION">b_status</column>
+	  <column column="SCHOOLS.SCHOOLCOUNTRY">c_dateLastModified</column>
+	  <column column="SCHOOLS.NAME">d_name</column>
+	  <column column="SCHOOLS.PRINCIPAL">e_type</column>
+	  <column column="SCHOOLS.PORTALID">f_identifier</column>
+	  <column column="SCHOOLS.COUNTYNAME">g_parentSourcedId</column>
+    </columns>
+    <sql><![CDATA[
+(select
+  cast ((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10)) as sourcedId,
+  null as status,
+  null as dateLastModified,
+  cast ((select prefs.value from prefs where prefs.name = 'districtname') as varchar2(50)) as name,
+  'district' as type,
+  null as identifier,
+  null as parentSourceId
+from dual)
+union all
+(select
+  cast(schools.school_number as varchar2(10)) as sourcedId,
+  null as status,
+  null as dateLastModified,
+  schools.name as name,
+  'school' as type,
+  null as identifier,
+  cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10)) as parentSourcedId
+from schools
+left join (
+    select s.schoolid,
+    COUNT(s.ID) as NO_OF_SECTIONS 
+    from sections s
+    join terms tb on tb.id=s.termid and tb.schoolid=s.schoolid
+    where s.termid>= 3000 and tb.lastday>=sysdate
+    GROUP BY s.schoolid
+    ORDER BY NO_OF_SECTIONS DESC
+) q ON schools.SCHOOL_NUMBER = q.schoolid
+)
+    ]]></sql>
+  </query>
+  <!-- Define more queries here -->
+</queries>
