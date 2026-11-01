@@ -5,21 +5,18 @@
       <column column="SCHOOLS.SCHOOL_NUMBER">a_sourcedId</column>
 	  <column column="SCHOOLS.NAME">b_name</column>
 	  <column column="SCHOOLS.PRINCIPAL">c_type</column>
-	  <column column="SCHOOLS.COUNTYNAME">d_parentSourcedId</column>
     </columns>
     <sql><![CDATA[
 (select
   cast ((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10)) as sourcedId,
   cast ((select prefs.value from prefs where prefs.name = 'districtname') as varchar2(50)) as name,
-  'district' as type,
-  null as parentSourceId
+  'district' as type
 from dual)
 union all
 (select
   cast(schools.school_number as varchar2(10)) as sourcedId,
   schools.name as name,
-  'school' as type,
-  cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10)) as parentSourcedId
+  'school' as type
 from schools
 left join (
     select s.schoolid,
