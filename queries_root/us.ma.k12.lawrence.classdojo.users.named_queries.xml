@@ -124,7 +124,7 @@ left join (select * from studenttocontact ) studenttocontact on studenttocontact
 Group by students.dcid
 ),
 contacttostudents as (select
-  person.id,
+  person.id as CTSPersonID,
   studentcontactassoc.studentdcid
 from person
 join studentcontactassoc on person.id = studentcontactassoc.personID
@@ -137,105 +137,122 @@ left join GuardianStudent on students.dcid = GuardianStudent.StudentsDCID and Gu
 where (PSSIS_STU_CONTACT_ACT.ISCUSTODIAL = 1 or PSSIS_STU_CONTACT_ACT.LIVESWITHFLG = 1 OR GuardianStudent.GuardianID is not null)
 and students.enroll_status in (0,-1)
 ),
-contacttostudentGroup as (select 
-  person.id,
+contacttostudentGroup as (select
+  person.id as CTSGPersonID,
   case 
-    when (replace(listagg('S'||contacttostudents.studentdcid,',') within group (ORDER BY person.id),'S,','')) = 'S' 
+    when (replace(listagg('S'||CTS.studentdcid,',') within group (ORDER BY person.id),'S,','')) = 'S' 
     then null 
-    else (replace(listagg('S'||contacttostudents.studentdcid,',') within group (ORDER BY person.id),'S,',''))
+    else (replace(listagg('S'||CTS.studentdcid,',') within group (ORDER BY person.id),'S,',''))
   end as agentSourcedIds
 from person
-left join (select * from contacttostudents) contacttostudents on contacttostudents.id = person.id
+left join (SELECT * FROM contacttostudents) CTS on CTS.CTSPersonID = person.id
 group by person.id
 ),
-contacttostudentSchool as (select 
- person.id,
+contacttostudentSchool as (select
+  person.id as CTSSPersonID,
   case 
     when (listagg(DISTINCT students.schoolid,',') within group (ORDER BY person.id)) is null
     then cast((select prefs.value from prefs where prefs.name = 'districtnumber') as varchar2(10))
     else (listagg( DISTINCT students.schoolid,',') within group (ORDER BY person.id))
   end as orgSourcedIds
 from person
-join (select * from contacttostudents) contacttostudents on contacttostudents.id = person.id
-join students on students.dcid = contacttostudents.studentdcid
+join (SELECT * FROM contacttostudents) CTS on CTS.CTSPersonID = person.id
+join students on students.dcid = CTS.studentdcid
 group by person.id
 ),
-PSSIS_Person_PhoneLand_Group as (select 
+contactPhoneLand_Group as (select 
 PSSIS_Person_Phone.PersonID,
 PSSIS_Person_Phone.PhoneNumber,
 PSSIS_Person_Phone.PhoneNumberExt,
 PSSIS_Person_Phone.PhoneType,
 row_number () over (
            partition by PersonID
-           order by IsPreferred DESC,PhoneNumberPriorityOrder ASC
+           order by PSSIS_Person_Phone.IsPreferred DESC, PSSIS_Person_Phone.PhoneNumberPriorityOrder ASC
          ) rn
 from PSSIS_Person_Phone
 where ISSMS = 0
 and PhoneNumberExt IS NULL
 ),
-PSSIS_Person_PhoneLand as (select 
-PSSIS_Person_PhoneLand_Group.PersonID,
-PSSIS_Person_PhoneLand_Group.PhoneNumber,
-PSSIS_Person_PhoneLand_Group.PhoneNumberExt,
-PSSIS_Person_PhoneLand_Group.PhoneType
-from  PSSIS_Person_PhoneLand_Group
-where PSSIS_Person_PhoneLand_Group.rn = 1
+contactPhoneLand as (select 
+contactPhoneLand_Group.PersonID,
+contactPhoneLand_Group.PhoneNumber,
+contactPhoneLand_Group.PhoneNumberExt,
+contactPhoneLand_Group.PhoneType
+from contactPhoneLand_Group
+where contactPhoneLand_Group.rn = 1
 ),
-PSSIS_Person_PhoneSMS_Group as (select 
+contactPhoneSMS_Group as (select 
 PSSIS_Person_Phone.PersonID,
 PSSIS_Person_Phone.PhoneNumber,
 PSSIS_Person_Phone.PhoneNumberExt,
 PSSIS_Person_Phone.PhoneType,
 row_number () over (
            partition by PersonID
-           order by IsPreferred DESC,PhoneNumberPriorityOrder ASC
+           order by PSSIS_Person_Phone.IsPreferred DESC, PSSIS_Person_Phone.PhoneNumberPriorityOrder ASC
          ) rn
 from PSSIS_Person_Phone
 where ISSMS = 1
 and PhoneNumberExt IS NULL
 ),
-PSSIS_Person_PhoneSMS as (select 
-PSSIS_Person_PhoneSMS_Group.PersonID,
-PSSIS_Person_PhoneSMS_Group.PhoneNumber,
-PSSIS_Person_PhoneSMS_Group.PhoneNumberExt,
-PSSIS_Person_PhoneSMS_Group.PhoneType
-from  PSSIS_Person_PhoneSMS_Group
-where PSSIS_Person_PhoneSMS_Group.rn = 1
+contactPhoneSMS as (select 
+contactPhoneSMS_Group.PersonID,
+contactPhoneSMS_Group.PhoneNumber,
+contactPhoneSMS_Group.PhoneNumberExt,
+contactPhoneSMS_Group.PhoneType
+from contactPhoneSMS_Group
+where contactPhoneSMS_Group.rn = 1
 ),
-PSSIS_Person_Email_Group as (select 
+contactEmail_Group as (select
 PSSIS_Person_Email.PersonID,
 PSSIS_Person_Email.EmailAddress,
-PSSIS_Person_Email.EmailType,
 row_number () over (
-           partition by PersonID
-           order by IsPrimaryEmailAddress DESC,EmailAddressPriorityOrder ASC
+           partition by PSSIS_Person_Email.PersonID
+           order by PSSIS_Person_Email.IsPrimaryEmailAddress DESC, PSSIS_Person_Email.EmailAddressPriorityOrder ASC
          ) rn
 from PSSIS_Person_Email
 ),
-PSSIS_Person_Email1 as (select 
-PSSIS_Person_Email_Group.PersonID,
-PSSIS_Person_Email_Group.EmailAddress,
-PSSIS_Person_Email_Group.EmailType
-from  PSSIS_Person_Email_Group
-where PSSIS_Person_Email_Group.rn = 1
+contactEmail1 as (select
+  contactEmail_Group.PersonID as CE1PersonID,
+  contactEmail_Group.EmailAddress
+from  contactEmail_Group
+where contactEmail_Group.rn = 1
 ),
-PersonLanguageAssoc_Group as (select
-  person.id,
-  Codeset.Code,
-  row_number () over (
-           partition by person.id
-           order by PersonLanguageAssoc.LANGUAGEPRIORITYORDER ASC
-         ) rn
+contactEmaillogin as (select 
+person.ID,
+pcas_emailcontact.emailaddress
 from person
-join PersonLanguageAssoc on person.id = PersonLanguageAssoc.PERSONID
-join Codeset on PersonLanguageAssoc.LANGUAGECODESETID = Codeset.CODESETID
+join GuardianPersonAssoc on person.id = GuardianPersonAssoc.PersonID
+left join guardian on guardianpersonassoc.guardianid = guardian.guardianid
+left join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
+left join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
 ),
-PersonLanguageAssoc1 as (select 
-PersonLanguageAssoc_Group.ID,
-PersonLanguageAssoc_Group.code
-from  PersonLanguageAssoc_Group
-where PersonLanguageAssoc_Group.rn = 1
+contactEmailmix as (select
+person.id,
+   case
+     when contactEmaillogin.id Is Not Null then contactEmaillogin.emailaddress
+     else contactEmail1.EmailAddress
+   end as EmailAddress
+from person
+left join (select * from contactEmail1) contactEmail1 on person.id = contactEmail1.CE1PersonID
+left join (select * from contactEmaillogin) contactEmaillogin on person.id = contactEmaillogin.ID
 )
+-- contactLanguage_Group as (select
+--   person.id as contactLanguagePersonID,
+--   Codeset.Code,
+--   row_number () over (
+--            partition by person.id
+--            order by PersonLanguageAssoc.LANGUAGEPRIORITYORDER ASC
+--          ) rn
+-- from person
+-- join PersonLanguageAssoc on PersonLanguageAssoc.PERSONID = person.id
+-- join Codeset on Codeset.CODESETID = PersonLanguageAssoc.LANGUAGECODESETID
+-- ),
+-- contactLanguage1 as (select 
+-- contactLanguage_Group.contactLanguagePersonID,
+-- contactLanguage_Group.code
+-- from contactLanguage_Group
+-- where contactLanguage_Group.rn = 1
+-- )
 -- teachers
 select 
   'T'||users.dcid as sourcedId,
@@ -298,33 +315,39 @@ union all
 -- Contacts
 select 
   'C'||person.id as sourcedId,
-  contacttostudentSchool.orgSourcedIds,
+  CTSS.orgSourcedIds as orgSourcedIds,
   'guardian' as role,
   person.firstname as givenName,
   person.lastname as familyName,
-  -- pcas_emailcontact.emailaddress as email,
   case
-    when pcas_emailcontact.pcas_accountid Is Not Null then pcas_emailcontact.emailaddress
-    else PSSIS_Person_Email1.EmailAddress
+    when pcas_emailcontact.pcas_accountID is null then contactEmail1.EmailAddress
+    else pcas_emailcontact.EmailAddress
   end as email,
-  contacttostudentGroup.agentSourcedIds,
-  PSSIS_Person_PhoneSMS.PhoneNumber as guardian_sms,
-  PSSIS_Person_PhoneLand.PhoneNumber as guardian_phone,
+  contacttostudentGroup.agentSourcedIds as agentSourcedIds,
+  contactPhoneSMS.PhoneNumber as guardian_sms,
+  contactPhoneLand.PhoneNumber as guardian_phone,
   null as staff_sms,
   null as staff_phone,
   null as grades,
-  PersonLanguageAssoc1.Code as primary_language
+  CLang1.Code as primary_language
 from person
-join (select * from contacttostudentSchool) contacttostudentSchool on contacttostudentSchool.id = person.id
-join (select * from contacttostudentGroup) contacttostudentGroup on contacttostudentGroup.id = person.id
-LEFT JOIN PSSIS_Person_PhoneSMS ON PSSIS_Person_PhoneSMS.PersonID = person.id
-LEFT JOIN PSSIS_Person_PhoneLand ON PSSIS_Person_PhoneLand.PersonID = person.id
-LEFT JOIN PSSIS_Person_Email1 ON PSSIS_Person_Email1.PersonID = person.id
-LEFT JOIN PersonLanguageAssoc1 ON PersonLanguageAssoc1.ID = person.id
-left join GuardianPersonAssoc on person.id = GuardianPersonAssoc.PersonID
-left join guardian on guardianpersonassoc.guardianid = guardian.guardianid
-left join pcas_account on GUARDIAN.accountidentifier = pcas_account.pcas_accounttoken
-left join pcas_emailcontact on pcas_account.pcas_accountID = pcas_emailcontact.pcas_accountid
+-- School join graph
+JOIN (SELECT * FROM contacttostudentSchool) CTSS on CTSS.CTSSPersonID = person.id
+-- guardian email join graph
+left join GuardianPersonAssoc on GuardianPersonAssoc.PersonID = person.id
+left join guardian on GuardianPersonAssoc.guardianid = guardian.guardianid
+left join pcas_account on  pcas_account.pcas_accounttoken = guardian.accountidentifier
+left join pcas_emailcontact on pcas_emailcontact.pcas_accountid = pcas_account.pcas_accountID
+left join (select * from contactEmail1) contactEmail1 on contactEmail1.CE1PersonID = person.id
+-- multi-student join graph
+join (select * from contacttostudentGroup) contacttostudentGroup on contacttostudentGroup.CTSGPersonID = person.id
+-- guardian phone join graph
+LEFT JOIN (select * from contactPhoneSMS) contactPhoneSMS ON contactPhoneSMS.PersonID = person.id
+LEFT JOIN (select * from contactPhoneLand) contactPhoneLand ON contactPhoneLand.PersonID = person.id
+-- guardian language join graph - can not use a CTE with CodeSet Table?
+-- LEFT JOIN (select * from contactLanguage1) CLang1 ON CLang1.contactLanguagePersonID = person.id
+left join PersonLanguageAssoc on PersonLanguageAssoc.PERSONID = person.id and PersonLanguageAssoc.LANGUAGEPRIORITYORDER = 1
+left join Codeset CLang1 on CLang1.CODESETID = PersonLanguageAssoc.LANGUAGECODESETID
 where person.IsActive = 1
 
     ]]></sql>
