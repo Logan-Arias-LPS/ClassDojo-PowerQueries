@@ -17,35 +17,18 @@ where portion = 1
   AND terms.lastday > sysdate
   AND sysdate > terms.firstday-30
   AND schoolid=0
-)
+), oneleadtecher as (select 
+sectionteacher.id as sectionteacherid,
+sectionteacher.sectionid,
+sections.schoolid,
+sectionteacher.start_date,
+sectionteacher.end_date,
+row_number () over (
+           partition by sectionteacher.sectionid
+           order by sectionteacher.end_date DESC, sectionteacher.start_date ASC
+         ) rn
 
-select 
-  'ST'||sectionteacher.id||'-T'||schoolstaff.users_dcid as sourcedId,
-  'T'||schoolstaff.users_dcid as userSourcedId,
-  sectionteacher.sectionid as classSourcedId,
-  sections.schoolid as schoolSourcedId,
-  case roledef.name
-    when 'Lead Teacher' then 'true'
-    when 'Co-teacher' then null
-    when 'DESE Co-teacher' then null
-    when 'ESL/SPED Teacher' then null
-    when 'Teacher''s Aide' then null
-    when 'Principal' then null
-    when 'School Administrator' then null
-    else null
-  end as primary,
-  case roledef.name
-    when 'Lead Teacher' then 'teacher'
-    when 'Co-teacher' then 'teacher'
-    when 'DESE Co-teacher' then 'teacher'
-    when 'ESL/SPED Teacher' then 'teacher'
-    when 'Teacher''s Aide' then 'teacher'
-    when 'Principal' then 'administrator'
-    when 'School Administrator' then 'administrator'
-    else 'teacher'
-  end as role
-  
-  
+
 from sectionteacher
 join sections on sectionteacher.sectionid = sections.id
 join schoolstaff on schoolstaff.id = sectionteacher.teacherid and schoolstaff.SchoolID = sections.schoolid
@@ -69,6 +52,86 @@ and sectionteacher.sectionid in
 and (users.teacherloginid is not null or users.loginid is not null)
 where sections.termid between yearquery.id and yearquery.id+99
 and schoolstaff.status = 1 and schoolstaff.staffstatus = 1 and users.PTAccess = 1
+and roledef.name = 'Lead Teacher'
+)
+
+select 
+'ST'||sectionteacher.id||'-T'||schoolstaff.users_dcid as sourcedId,
+'T'||schoolstaff.users_dcid as userSourcedId,
+sectionteacher.sectionid as classSourcedId,
+sections.schoolid as schoolSourcedId,
+'true' as primary,
+'teacher' as role
+
+from sectionteacher
+join sections on sectionteacher.sectionid = sections.id
+join schoolstaff on schoolstaff.id = sectionteacher.teacherid and schoolstaff.SchoolID = sections.schoolid
+join schools on schoolstaff.SchoolID = schools.School_Number
+join users on schoolstaff.users_dcid = users.dcid
+join roledef on sectionteacher.roleid = roledef.id
+and (sysdate between sectionteacher.start_date-21 and sectionteacher.end_date+21)
+left join yearquery on 1=1
+join (select * from oneleadtecher ) oneleadtecher on sectionteacher.id = oneleadtecher.sectionteacherid and oneleadtecher.rn = 1
+join (SELECT 
+    sectionid,
+    COUNT(sectionid) as NO_OF_STUDENTS
+    from cc
+    GROUP BY sectionid
+    ) q ON sections.id = q.sectionid
+and sectionteacher.sectionid in 
+(
+  select sections.id from sections
+  left join yearquery on 1=1
+  where sections.termid between yearquery.id and yearquery.id+99
+)
+and (users.teacherloginid is not null or users.loginid is not null)
+where sections.termid between yearquery.id and yearquery.id+99
+and schoolstaff.status = 1 and schoolstaff.staffstatus = 1 and users.PTAccess = 1
+and roledef.name = 'Lead Teacher'
+
+union all
+
+select 
+'ST'||sectionteacher.id||'-T'||schoolstaff.users_dcid as sourcedId,
+'T'||schoolstaff.users_dcid as userSourcedId,
+sectionteacher.sectionid as classSourcedId,
+sections.schoolid as schoolSourcedId,
+null as primary,
+case roledef.name
+  when 'Lead Teacher' then 'teacher'
+  when 'Co-teacher' then 'teacher'
+  when 'DESE Co-teacher' then 'teacher'
+  when 'ESL/SPED Teacher' then 'teacher'
+  when 'Teacher''s Aide' then 'teacher'
+  when 'Principal' then 'administrator'
+  when 'School Administrator' then 'administrator'
+  else 'teacher'
+end as role
+
+from sectionteacher
+join sections on sectionteacher.sectionid = sections.id
+join schoolstaff on schoolstaff.id = sectionteacher.teacherid and schoolstaff.SchoolID = sections.schoolid
+join schools on schoolstaff.SchoolID = schools.School_Number
+join users on schoolstaff.users_dcid = users.dcid
+join roledef on sectionteacher.roleid = roledef.id
+and (sysdate between sectionteacher.start_date-21 and sectionteacher.end_date+21)
+left join yearquery on 1=1
+join (SELECT 
+    sectionid,
+    COUNT(sectionid) as NO_OF_STUDENTS
+    from cc
+    GROUP BY sectionid
+    ) q ON sections.id = q.sectionid
+and sectionteacher.sectionid in 
+(
+  select sections.id from sections
+  left join yearquery on 1=1
+  where sections.termid between yearquery.id and yearquery.id+99
+)
+and (users.teacherloginid is not null or users.loginid is not null)
+where sections.termid between yearquery.id and yearquery.id+99
+and schoolstaff.status = 1 and schoolstaff.staffstatus = 1 and users.PTAccess = 1
+and roledef.name != 'Lead Teacher'
 
 union all
 
